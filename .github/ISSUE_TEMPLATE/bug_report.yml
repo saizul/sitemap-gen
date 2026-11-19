@@ -1,0 +1,40 @@
+name: Bug report
+description: A page was crawled, skipped or written wrongly, or sitemap-gen crashed
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste cookies, tokens or private page content.** Replace them with placeholders.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: The command you ran and the relevant output (run with -v for the request log).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: page
+    attributes:
+      label: Page to reproduce
+      description: A public URL, or the HTML and response headers of the page (and robots.txt if relevant).
+      render: html
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Output of: sitemap-gen --version (or the image tag)"
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "Docker image on Ubuntu 24.04 / pipx install on Python 3.12, macOS"

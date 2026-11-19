@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Ruff
+        run: |
+          ruff check .
+          ruff format --check .
+
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: Test
+        run: pytest
+      - name: Crawl the example site with the CLI
+        run: |
+          (cd examples/site && python -m http.server 8765 --bind 127.0.0.1 &)
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8765/ && break; sleep 0.5; done
+          sitemap-gen --version
+          sitemap-gen http://127.0.0.1:8765/ -o "$RUNNER_TEMP/sitemap.xml" --images
+          cat "$RUNNER_TEMP/sitemap.xml"
+          test "$(grep -c '<loc>' "$RUNNER_TEMP/sitemap.xml")" -eq 5
+          if grep -qE '/admin/|thanks\.html' "$RUNNER_TEMP/sitemap.xml"; then echo "blocked page in sitemap" && exit 1; fi
+
+  docker:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t sitemap-gen:ci .
+      - run: docker run --rm sitemap-gen:ci --version
+      - name: Crawl an nginx container serving the example site
+        run: |
+          docker network create crawl
+          docker run -d --name web --network crawl \
+            -v "$PWD/examples/site:/usr/share/nginx/html:ro" nginx:alpine
+          for i in $(seq 1 20); do
+            if docker run --rm --network crawl sitemap-gen:ci http://web/ -o - > sitemap.xml; then break; fi
+            sleep 1
+          done
+          cat sitemap.xml
+          test "$(grep -c '<loc>' sitemap.xml)" -eq 5
