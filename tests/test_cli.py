@@ -92,3 +92,16 @@ def test_version(capsys):
         main(["--version"])
     assert exc.value.code == 0
     assert capsys.readouterr().out.strip() == f"sitemap-gen {__version__}"
+
+
+def test_hreflang_flag(tmp_path):
+    site = FakeSite()
+    head = '<link rel="alternate" hreflang="en" href="/"><link rel="alternate" hreflang="bn" href="/bn/">'
+    site.add(f"{ROOT}/", html("home", head)).add(f"{ROOT}/bn/", html("bn", head))
+    out = tmp_path / "sitemap.xml"
+    assert main([ROOT, "-o", str(out), "--hreflang", "-q"], transport=site.transport) == 0
+    text = out.read_text()
+    assert locs(out) == [f"{ROOT}/", f"{ROOT}/bn/"]
+    assert text.count('<xhtml:link rel="alternate" hreflang="bn" href="https://example.com/bn/"/>') == 2
+    assert main([ROOT, "-o", str(out), "-q"], transport=site.transport) == 0
+    assert "xhtml" not in out.read_text()

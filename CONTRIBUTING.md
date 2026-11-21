@@ -76,18 +76,15 @@ examples/      a static example site, a library example, a CI workflow
 2. **`--report report.json`**: write `result.skipped` and the skipped URLs
    with their reason. Record URLs per reason in `CrawlResult` and add the flag
    in `cli.py`.
-3. **`hreflang` alternates**: collect `<link rel="alternate" hreflang>` in
-   `parser.py` and write `<xhtml:link>` entries in `writer.py` behind
-   `--hreflang`.
-4. **`--seed-urls FILE`**: start from a list of URLs (one per line) in
+3. **`--seed-urls FILE`**: start from a list of URLs (one per line) in
    addition to the start URL. Enqueue them in `Crawler.run`.
-5. **Skip more file types**: add missing extensions to `SKIP_EXTENSIONS` in
+4. **Skip more file types**: add missing extensions to `SKIP_EXTENSIONS` in
    `urls.py` with a test in `tests/test_urls.py`.
-6. **Respect `<meta http-equiv="refresh">`**: treat an immediate refresh to
+5. **Respect `<meta http-equiv="refresh">`**: treat an immediate refresh to
    another URL like a redirect in `parser.py` and `crawler.py`.
-7. **Progress output**: print `fetched N pages` to stderr every 100 pages
+6. **Progress output**: print `fetched N pages` to stderr every 100 pages
    when stderr is a terminal, in `crawler.py` or `cli.py`.
-8. **Video sitemap entries**: collect `<video src>` in `parser.py` and write
+7. **Video sitemap entries**: collect `<video src>` in `parser.py` and write
    `<video:video>` entries with `--videos`.
 
 ## Pull requests

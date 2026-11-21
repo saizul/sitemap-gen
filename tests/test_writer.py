@@ -125,3 +125,36 @@ def test_helpers():
     assert w3c_datetime(datetime(2026, 1, 1, 12, 0, tzinfo=timezone(timedelta(hours=6)))) == "2026-01-01T06:00:00+00:00"
     assert w3c_datetime(datetime(2026, 1, 1)) == "2026-01-01T00:00:00+00:00"
     assert b"<sitemapindex" in build_index(["https://example.com/a.xml"])
+
+
+XHTML = "{http://www.w3.org/1999/xhtml}link"
+
+
+def test_hreflang_alternates():
+    entry = SitemapEntry(
+        "https://example.com/en/",
+        alternates=[("en", "https://example.com/en/"), ("bn-BD", "https://example.com/bn/?a=1&b=2")],
+    )
+    [doc] = build_sitemaps([entry], hreflang=True)
+    assert b'xmlns:xhtml="http://www.w3.org/1999/xhtml"' in doc
+    assert b'href="https://example.com/bn/?a=1&amp;b=2"' in doc
+    root = ET.fromstring(doc)
+    links = root.findall(f"s:url/{XHTML}", NS)
+    assert [(e.get("rel"), e.get("hreflang"), e.get("href")) for e in links] == [
+        ("alternate", "en", "https://example.com/en/"),
+        ("alternate", "bn-BD", "https://example.com/bn/?a=1&b=2"),
+    ]
+    [plain] = build_sitemaps([entry])
+    assert b"xhtml" not in plain
+
+
+def test_hreflang_and_images_together(tmp_path):
+    entry = SitemapEntry(
+        "https://example.com/", images=["https://example.com/a.png"], alternates=[("en", "https://example.com/")]
+    )
+    [path] = write_sitemaps(
+        [entry], tmp_path / "sitemap.xml", base_url="https://example.com/", images=True, hreflang=True
+    )
+    root = ET.parse(path).getroot()
+    assert root.find(f"s:url/{XHTML}", NS).get("hreflang") == "en"
+    assert root.find("s:url/image:image/image:loc", NS).text == "https://example.com/a.png"

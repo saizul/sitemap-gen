@@ -47,3 +47,16 @@ def test_broken_html_does_not_crash():
     info = parse_html("<a href='/ok'>ok<a href=/unquoted>x</a><div <<<>")
     assert "/ok" in info.links
     assert "/unquoted" in info.links
+
+
+def test_extracts_hreflang_alternates():
+    info = parse_html(
+        """
+        <link rel="alternate" hreflang="en" href="/en/">
+        <link rel="Alternate" hreflang="bn-BD" href="https://example.com/bn/">
+        <link rel="alternate" hreflang="x-default" href="/" />
+        <link rel="alternate" type="application/rss+xml" href="/feed.xml">
+        <link rel="alternate" hreflang="de" href="">
+        """
+    )
+    assert info.alternates == [("en", "/en/"), ("bn-BD", "https://example.com/bn/"), ("x-default", "/")]

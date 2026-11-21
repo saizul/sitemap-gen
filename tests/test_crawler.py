@@ -258,3 +258,29 @@ def test_config_validation(kwargs):
 def test_rejects_non_http_start():
     with pytest.raises(ValueError):
         Crawler(CrawlConfig("ftp://example.com/"))
+
+
+def test_hreflang_alternates_are_collected_and_crawled(site):
+    head = (
+        '<link rel="alternate" hreflang="en" href="/">'
+        '<link rel="alternate" hreflang="bn" href="/bn/">'
+        '<link rel="alternate" hreflang="EN" href="/duplicate-language">'
+        '<link rel="alternate" hreflang="not a tag" href="/bad">'
+        '<link rel="alternate" hreflang="fr" href="https://example.fr/">'
+        '<link rel="alternate" hreflang="x-default" href="/">'
+    )
+    site.add(f"{ROOT}/", html("<p>home</p>", head))
+    site.add(f"{ROOT}/bn/", html("<p>bangla</p>", head))
+    result = run(CrawlConfig(f"{ROOT}/", hreflang=True), site)
+    assert urls(result) == [f"{ROOT}/", f"{ROOT}/bn/"]
+    expected = [("en", f"{ROOT}/"), ("bn", f"{ROOT}/bn/"), ("fr", "https://example.fr/"), ("x-default", f"{ROOT}/")]
+    assert [p.alternates for p in result.sorted_pages()] == [expected, expected]
+    assert "/bad" not in site.paths() and "/duplicate-language" not in site.paths()
+
+
+def test_hreflang_is_off_by_default(site):
+    site.add(f"{ROOT}/", html("<p>home</p>", '<link rel="alternate" hreflang="bn" href="/bn/">'))
+    site.add(f"{ROOT}/bn/", html("<p>bangla</p>"))
+    result = run(CrawlConfig(f"{ROOT}/"), site)
+    assert urls(result) == [f"{ROOT}/"]
+    assert result.pages[0].alternates == []

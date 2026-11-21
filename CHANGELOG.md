@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `--hreflang` (`CrawlConfig(hreflang=True)`): collect each page's
+  `<link rel="alternate" hreflang>` tags and write them as
+  `<xhtml:link rel="alternate">` entries, as Google documents for
+  multilingual sites. Same-site alternates are crawled as well. Invalid
+  language tags and repeated languages are dropped; at most 500 per page.
+- `SitemapEntry.alternates`, `Page.alternates` and a `hreflang` argument for
+  `build_sitemaps()`, `plan_files()` and `write_sitemaps()`.
+
 ## [0.1.0] - 2026-11-19
 
 ### Added

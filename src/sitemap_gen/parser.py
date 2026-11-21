@@ -1,4 +1,4 @@
-"""Extract links, the canonical URL, robots directives and images from HTML."""
+"""Extract links, the canonical URL, hreflang alternates, robots directives and images from HTML."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ class PageInfo:
     noindex: bool = False
     nofollow: bool = False
     images: list[str] = field(default_factory=list)
+    alternates: list[tuple[str, str]] = field(default_factory=list)
+    """``(hreflang, href)`` pairs from ``<link rel="alternate" hreflang="..." href="...">``."""
 
 
 def parse_robots_directives(value: str) -> set[str]:
@@ -53,6 +55,9 @@ class _Extractor(HTMLParser):
             href = a.get("href", "").strip()
             if "canonical" in rel and href and self.info.canonical is None:
                 self.info.canonical = href
+            hreflang = a.get("hreflang", "").strip()
+            if "alternate" in rel and href and hreflang:
+                self.info.alternates.append((hreflang, href))
         elif tag == "base":
             href = a.get("href", "").strip()
             if href and self.info.base is None:
