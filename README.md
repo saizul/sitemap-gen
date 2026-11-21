@@ -27,7 +27,8 @@ sitemap-gen only lists the pages you actually want indexed:
 - **Protocol limits handled**: splits into numbered sitemaps plus a sitemap
   index at 50,000 URLs or 50 MB, writes `.xml.gz` with `--gzip`.
 - **Extras**: `<lastmod>` from the `Last-Modified` header, image sitemap
-  entries (`<image:image>`) for every `<img>` on a page.
+  entries (`<image:image>`) for every `<img>` on a page, and `hreflang`
+  alternates (`<xhtml:link>`) for multilingual sites.
 - **Small**: async Python on [httpx](https://www.python-httpx.org/) and the
   standard library HTML parser. One dependency, no browser.
 
@@ -88,6 +89,7 @@ sitemap-gen URL [-o FILE] [options]
 | `--follow-nofollow` | off | Also follow `rel="nofollow"` links. |
 | `--lastmod` | off | Add `<lastmod>` from each page's `Last-Modified` header. |
 | `--images` | off | Add `<image:image>` entries for the page's `<img src>` (up to 1,000 per page). |
+| `--hreflang` | off | Add `<xhtml:link rel="alternate" hreflang>` entries from each page's `<link rel="alternate" hreflang>` tags (up to 500 per page), and crawl the same-site language versions they point to. |
 | `--gzip` | off | Write `.xml.gz` files. |
 | `--base-url URL` | site root | Where the sitemap files will be served, for the `<loc>` entries of a sitemap index. |
 | `--max-urls-per-file N` | 50000 | Split into an index sooner than the protocol limit. |
@@ -107,6 +109,9 @@ $ sitemap-gen https://example.com/blog/ --include '/blog/' --exclude '/tag/' --s
 
 # Image sitemap with last-modified dates, written to stdout
 $ sitemap-gen https://example.com --images --lastmod -o - > sitemap.xml
+
+# A multilingual site: list every language version of each page
+$ sitemap-gen https://example.com --hreflang -o sitemap.xml
 ```
 
 A nightly GitHub Actions workflow that commits the result is in
@@ -158,6 +163,26 @@ Up to 50,000 URLs and 50 MB (uncompressed), you get one file:
 </urlset>
 ```
 
+With `--hreflang`, each `<url>` also lists the language versions the page
+declares, as [Google documents](https://developers.google.com/search/docs/specialty/international/localized-versions#sitemap):
+
+```xml
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://example.com/en/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://example.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="bn" href="https://example.com/bn/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://example.com/"/>
+  </url>
+</urlset>
+```
+
+Alternates are written as the page declares them (resolved to absolute URLs,
+other domains included). Values that are not a language tag or `x-default`
+and repeated languages are dropped. Alternates on the same site are crawled
+too, so language versions that are only linked through `hreflang` still end
+up in the sitemap.
+
 Above either limit, `-o sitemap.xml` becomes a sitemap index and the URLs go
 into `sitemap-1.xml`, `sitemap-2.xml`, ... next to it. The index points to
 `<base-url>/sitemap-1.xml`, so upload all files to the same directory (the
@@ -174,7 +199,7 @@ from sitemap_gen import CrawlConfig, SitemapEntry, crawl, write_sitemaps
 
 result = asyncio.run(crawl(CrawlConfig("https://example.com", concurrency=2, lastmod=True)))
 print(len(result.pages), dict(result.skipped))
-entries = [SitemapEntry(p.url, p.lastmod, p.images) for p in result.sorted_pages()]
+entries = [SitemapEntry(p.url, p.lastmod, p.images, p.alternates) for p in result.sorted_pages()]
 write_sitemaps(entries, "sitemap.xml", base_url=result.origin + "/")
 ```
 
@@ -220,7 +245,6 @@ minute; raise `--concurrency` on your own infrastructure.
 Ideas, several are good first issues (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
 - [ ] Retry `429` and `503` responses once, honouring `Retry-After`
-- [ ] `hreflang` alternates (`<xhtml:link rel="alternate">`)
 - [ ] Seed the crawl from an existing sitemap or a URL list (`--seed-urls`)
 - [ ] A JSON report of skipped URLs and reasons (`--report report.json`)
 - [ ] Video sitemap entries for `<video>` and YouTube embeds

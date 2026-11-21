@@ -88,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
     out = p.add_argument_group("output")
     out.add_argument("--lastmod", action="store_true", help="add <lastmod> from the Last-Modified response header")
     out.add_argument("--images", action="store_true", help="add <image:image> entries (image sitemap extension)")
+    out.add_argument(
+        "--hreflang",
+        action="store_true",
+        help='add <xhtml:link rel="alternate" hreflang> entries from each page\'s alternate links',
+    )
     out.add_argument("--gzip", action="store_true", help="write .xml.gz files")
     out.add_argument(
         "--base-url",
@@ -142,6 +147,7 @@ def main(argv: Sequence[str] | None = None, *, transport: httpx.AsyncBaseTranspo
             user_agent=args.user_agent,
             lastmod=args.lastmod,
             images=args.images,
+            hreflang=args.hreflang,
             include=args.include,
             exclude=args.exclude,
             strip_query=args.strip_query,
@@ -162,12 +168,17 @@ def main(argv: Sequence[str] | None = None, *, transport: httpx.AsyncBaseTranspo
         print("sitemap-gen: no indexable pages found; nothing written", file=sys.stderr)
         return 1
 
-    entries = [SitemapEntry(p.url, p.lastmod, p.images) for p in result.sorted_pages()]
+    entries = [SitemapEntry(p.url, p.lastmod, p.images, p.alternates) for p in result.sorted_pages()]
     base_url = args.base_url or result.origin + "/"
     now = datetime.now(UTC).replace(microsecond=0)
     if args.output == "-":
         files = plan_files(
-            entries, Path("sitemap.xml"), base_url=base_url, images=args.images, max_urls=args.max_urls_per_file
+            entries,
+            Path("sitemap.xml"),
+            base_url=base_url,
+            images=args.images,
+            hreflang=args.hreflang,
+            max_urls=args.max_urls_per_file,
         )
         if len(files) > 1:
             print("sitemap-gen: too many URLs for one sitemap; use -o FILE to write an index", file=sys.stderr)
@@ -182,6 +193,7 @@ def main(argv: Sequence[str] | None = None, *, transport: httpx.AsyncBaseTranspo
             base_url=base_url,
             gzip=args.gzip,
             images=args.images,
+            hreflang=args.hreflang,
             max_urls=args.max_urls_per_file,
             max_bytes=MAX_BYTES,
             now=now,

@@ -26,6 +26,9 @@ HTML_TYPES = ("text/html", "application/xhtml+xml")
 MAX_ROBOTS_BYTES = 512 * 1024
 MAX_CRAWL_DELAY = 60.0
 MAX_IMAGES_PER_PAGE = 1000
+MAX_ALTERNATES_PER_PAGE = 500
+# A BCP 47 language tag (en, en-GB, zh-Hant-TW, es-419) or x-default, as Google accepts in hreflang.
+HREFLANG_RE = re.compile(r"^(?:x-default|[a-z]{2,3}(?:-[a-z0-9]{1,8})*)$", re.IGNORECASE)
 
 
 @dataclass
@@ -44,6 +47,8 @@ class CrawlConfig:
     """Record the Last-Modified response header as <lastmod>."""
     images: bool = False
     """Collect <img> URLs for an image sitemap."""
+    hreflang: bool = False
+    """Collect <link rel="alternate" hreflang> alternates, and crawl the same-site ones."""
     include: list[str] = field(default_factory=list)
     """Only crawl URLs matching at least one of these regular expressions."""
     exclude: list[str] = field(default_factory=list)
@@ -75,6 +80,8 @@ class Page:
     depth: int
     lastmod: datetime | None = None
     images: list[str] = field(default_factory=list)
+    alternates: list[tuple[str, str]] = field(default_factory=list)
+    """``(hreflang, url)`` pairs the page declares, when ``CrawlConfig.hreflang`` is on."""
 
 
 @dataclass
@@ -284,6 +291,21 @@ class Crawler:
                 # The canonical page is the one that belongs in the sitemap.
                 self._enqueue(canonical, depth)
 
+        alternates: list[tuple[str, str]] = []
+        if cfg.hreflang:
+            seen_langs: set[str] = set()
+            for lang, href in info.alternates:
+                alt = normalize_url(href, base, strip_query=cfg.strip_query)
+                key = lang.lower()
+                if alt is None or not HREFLANG_RE.match(lang) or key in seen_langs:
+                    continue
+                seen_langs.add(key)
+                alternates.append((lang, alt))
+                # Language versions are often only reachable through the alternates.
+                self._enqueue(alt, depth + 1)
+                if len(alternates) >= MAX_ALTERNATES_PER_PAGE:
+                    break
+
         if not nofollow:
             hrefs = info.links + (info.nofollow_links if cfg.follow_nofollow else [])
             for href in hrefs:
@@ -307,7 +329,7 @@ class Crawler:
                     images.append(img)
                     if len(images) >= MAX_IMAGES_PER_PAGE:
                         break
-        result.pages.append(Page(url=final, depth=depth, lastmod=lastmod, images=images))
+        result.pages.append(Page(url=final, depth=depth, lastmod=lastmod, images=images, alternates=alternates))
 
     async def _worker(self, client: httpx.AsyncClient) -> None:
         while True:

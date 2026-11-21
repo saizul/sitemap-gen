@@ -10,6 +10,7 @@ from pathlib import Path
 
 SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 IMAGE_NS = "http://www.google.com/schemas/sitemap-image/1.1"
+XHTML_NS = "http://www.w3.org/1999/xhtml"
 
 MAX_URLS = 50_000
 """Protocol limit: URLs per sitemap file."""
@@ -22,6 +23,8 @@ class SitemapEntry:
     loc: str
     lastmod: datetime | None = None
     images: Sequence[str] = field(default_factory=tuple)
+    alternates: Sequence[tuple[str, str]] = field(default_factory=tuple)
+    """``(hreflang, url)`` pairs written as ``<xhtml:link rel="alternate">`` with ``hreflang=True``."""
 
 
 @dataclass
@@ -49,18 +52,25 @@ def w3c_datetime(dt: datetime) -> str:
     return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
-def _header(images: bool) -> bytes:
-    ns = f' xmlns="{SITEMAP_NS}"' + (f' xmlns:image="{IMAGE_NS}"' if images else "")
+def _header(images: bool, hreflang: bool = False) -> bytes:
+    ns = f' xmlns="{SITEMAP_NS}"'
+    if hreflang:
+        ns += f' xmlns:xhtml="{XHTML_NS}"'
+    if images:
+        ns += f' xmlns:image="{IMAGE_NS}"'
     return f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset{ns}>\n'.encode()
 
 
 _FOOTER = b"</urlset>\n"
 
 
-def _entry(entry: SitemapEntry, images: bool) -> bytes:
+def _entry(entry: SitemapEntry, images: bool, hreflang: bool = False) -> bytes:
     lines = ["  <url>", f"    <loc>{xml_escape(entry.loc)}</loc>"]
     if entry.lastmod is not None:
         lines.append(f"    <lastmod>{w3c_datetime(entry.lastmod)}</lastmod>")
+    if hreflang:
+        for lang, href in entry.alternates:
+            lines.append(f'    <xhtml:link rel="alternate" hreflang="{xml_escape(lang)}" href="{xml_escape(href)}"/>')
     if images:
         for img in entry.images:
             lines += ["    <image:image>", f"      <image:loc>{xml_escape(img)}</image:loc>", "    </image:image>"]
@@ -72,6 +82,7 @@ def build_sitemaps(
     entries: Iterable[SitemapEntry],
     *,
     images: bool = False,
+    hreflang: bool = False,
     max_urls: int = MAX_URLS,
     max_bytes: int = MAX_BYTES,
 ) -> list[bytes]:
@@ -80,13 +91,13 @@ def build_sitemaps(
         raise ValueError(f"max_urls must be between 1 and {MAX_URLS}")
     if not 1024 <= max_bytes <= MAX_BYTES:
         raise ValueError(f"max_bytes must be between 1024 and {MAX_BYTES}")
-    header = _header(images)
+    header = _header(images, hreflang)
     fixed = len(header) + len(_FOOTER)
     docs: list[bytes] = []
     chunk: list[bytes] = []
     size = fixed
     for entry in entries:
-        data = _entry(entry, images)
+        data = _entry(entry, images, hreflang)
         if fixed + len(data) > max_bytes:
             raise ValueError(f"a single entry is larger than {max_bytes} bytes: {entry.loc[:100]}")
         if chunk and (len(chunk) >= max_urls or size + len(data) > max_bytes):
@@ -127,6 +138,7 @@ def plan_files(
     base_url: str,
     gzip: bool = False,
     images: bool = False,
+    hreflang: bool = False,
     max_urls: int = MAX_URLS,
     max_bytes: int = MAX_BYTES,
     now: datetime | None = None,
@@ -135,7 +147,7 @@ def plan_files(
     numbered sitemaps plus an index at ``output`` that points to them under
     ``base_url``."""
     entries = list(entries)
-    docs = build_sitemaps(entries, images=images, max_urls=max_urls, max_bytes=max_bytes)
+    docs = build_sitemaps(entries, images=images, hreflang=hreflang, max_urls=max_urls, max_bytes=max_bytes)
     out_name = output.name
     if gzip and not out_name.endswith(".gz"):
         out_name += ".gz"
@@ -157,6 +169,7 @@ def write_sitemaps(
     base_url: str,
     gzip: bool = False,
     images: bool = False,
+    hreflang: bool = False,
     max_urls: int = MAX_URLS,
     max_bytes: int = MAX_BYTES,
     now: datetime | None = None,
@@ -169,6 +182,7 @@ def write_sitemaps(
         base_url=base_url,
         gzip=gzip,
         images=images,
+        hreflang=hreflang,
         max_urls=max_urls,
         max_bytes=max_bytes,
         now=now,
